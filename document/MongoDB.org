@@ -88,4 +88,282 @@
 *** 数组定位修改器
     数组有多个值, 只想对其中的一部分进行操作, 有两种方法操作数组中的值, 通过位置或者定位操作符$,
     数组都是以0开头的, 可以将下标直接作为键来选择
-    
+    db.blog.update({"post":"post"}, {"$inc":{"comments.0.votes":1}})
+    db.blog.update({"comments.author":"John"}, {"$set":{"comments.$.author":"Jim"}})
+    定位符只会更新第一个匹配的元素, 如果John不止有一个评论, 那么只更新第一条评论中的名字
+*** upsert
+    如果没有符合更新条件的文档, 就会以这个条件和更新文档为基础创建一个新的文档
+    db.analytics.update({"url":"/blog"}, {"$inc":{"visits":1}}, true), #update的第三个参数表示
+    这个是一个upsert操作
+*** save
+    save是一个shell函数, 可以在文档不存在时插入, 存在时更新, 如果该文档含有"_id"键, save会调用
+    upsert. 否则会调用插入.
+*** 更新多个文档
+    要使得所有匹配到的文档都得到更新, 可以设置update的第4个参数为True, 服务器可能默认会更新所有匹配
+    的文档, 只有第4个参数为false才会只更新一个, 所以建议每次都显示表明要不要做多文档更新
+    想要知道多文档更新到底更新了多少文档, 可以运行getLastError命令或getLastOpStatus, 键n的值就是要的
+    数值
+    db.runCommand({getLastError:1});
+*** 返回已更新的文档
+    findAndModify的调用方式和普通的更新略有不同, 还有点慢, 原因是要等待数据库的响应.
+    db.runCommand({"findAndModify":"processes",
+        "query":{"status":"READY"},
+        "sort":{"priority":-1},
+        "update":{"$set":{"status":"RUNNING"}}})
+    其中processes是集合名, -1表示倒序排列
+    findAndModify既有update键也有remove键, remove键表示将匹配道德文档从集合中删除, new键表示
+    返回的是更新前还是更新后的键, 默认为更新前的键
+    db.runCommand({"findAndModify":"processes",
+        "query":{"status":"READY"},
+        "sort":{"priority":-1},
+        "remove":true},
+        "new": true)
+    update/remove必须有一个, 也只能有一个, 要是匹配不到文档, 该命令返回null, 该命令一次只能处理
+    一个文档, 不能执行upsert操作, 只能更新已有文档
+*** 捕获"常规"错误
+    安全操作可以在开发阶段用来调试数据库的奇怪行为
+* 查询 
+** 指定查询返回的键
+   通过find, findOne的第二个参数来指定想要的键, _id:总是被返回
+   db.users.find({}, {"username":1, "email":1}) #显示username, email
+   db.users.find({}, {"username":0, "_id":0} #其他键都显示, 只有username, _id不显示
+   数据库所关心的查询文档的值必须是常量, 即不能引用文档中其他键的值, 在程序中可以使用变量
+** 查询条件
+   "$lt" "$lte" "$gt" "$gte" "$ne" 对应<, <=, >, >=, !=
+   db.users.find({"age":{"$gte":18, "$lte":30}})
+   $ne可以用于所有数据类型
+   $in: 查询一个键的多个值, 可以指定不同类型的条件和值
+   $nin: 与$in相对
+   $or: 接受一个包含所有可能条件的数组作为参数
+   db.raffle.find({"$or":[{"ticket_no": {"$in":[725, 542, 390]}}, {"winner":true}]})
+   使用$or时, 第一个条件尽可能地匹配更多的文档, 这样才最为有效
+   $mod会将查询的值除以第一个给定值, 若余数等于第二个给定值则返回该结果
+   db.users.find({"id_num": {"$mod":[5,1]}})
+   db.users.find({"id_num": {$not:{"$mod":[5,1]}}})
+   $not与正则表达式联合使用的时候极为有用
+   通过以上查询的观测, 发现条件语句是内层文档的键, 而修改器则是外层文档的键
+   一个键可以有多个条件, 但一个键不能对应多个更新修改器
+*** null
+    null能匹配自身, 而且也匹配不存在的, 即不存在某个键的文档
+    如果仅仅想匹配键值为null的文档, 还要通过$exists条件判断键值是否已经存在
+    db.c.find({"z":{"$in":[null], "$exists": true}})
+*** 正则表达式
+    db.users.find({"name":/joe/i})
+    mongodb使用perl兼容的正则表达式库来匹配正则表达式, pcre支持的正则表达式语法都能被mongodb所接受
+    mongodb可以为前缀型正则表达式创建索引, 正则表达式也可以匹配自身
+*** 查询数组
+    数组可以理解为每一个元素都是整个键的值.
+    db.food.insert({"fruit":["apple","banana", "peach"]})
+    db.food.find({"fruit":"banana"}) #可以查到到上述的数据
+    db.food.find({"fruit":{$all:["apple", "banana"]}}) #找到既有apple还有bananan的文档
+    查找数组指定位置的元素, db.food.find({"fruit.2":"peach"})
+    $size: 可以查询指定长度的数组, $size不能与其他查询子句组合
+    $slice: db.blog.posts.findOne(criteria, {"comments": {"$slice": 10}}) # 返回前10条评论
+    db.blog.posts.findOne(criteria, {"comments":{"$slice":-10}}) #返回后10条
+    db.blog.posts.findOne(criteria, {"comments":{$slice: [23, 10]}}) #跳过前23个元素, 返回10个
+    查找内嵌文档:
+    db.people.find({"name":{"first":"Joe", "last":"Schmoe"}}) #该查询是明确匹配, 而且还是顺序相关的
+    db.people.find({"name.first":"Joe", "name.last":"Schmoe"}) #则是查询只要name.fisrt=x&&name.last=x的数据
+
+    #查询joe写的评分大于等于5的评论, $elemMatch将限定条件进行分组, 仅当需要对一个内嵌文档的多个键
+    #操作时才会用到
+    db.blog.find({"comments":{"$elemMatch":{"author":"joe", {"score":{"$gte":5}}}}})
+*** $where        
+    db.foo.insert({"apple":1, "banana":6, "peach":3})
+    db.foo.insert({"apple":8, "spinach":4, "watermelon":4})
+    db.foo.find({"$where": functioin() {
+        for (var current in this) {
+            for (var other in this) {
+                if (current != other && this[current] == this[other]) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }});
+    如果函数返回true, 文档就作为结果的一部分被返回
+    $where的值也可以用一个字符串来指定
+    db.foo.find({"$where":"this.x + this.y == 10"})
+    不是必要时, 一定要避免使用$where查询, 因为在速度上要比常规查询慢很多
+*** limit, skip, sort
+    db.c.find().limit(3) #3指定的是上限而非下线
+    db.c.find().skip(3) #跳过前3个
+    db.c.find().sort({username:1,age:-1}) #按username升序排列, age降序排列
+    略过过多的结果会导致性能问题
+    对混合类型的排序, 其排序结果是预先定义好的, 从小到大, 其顺序如下:
+    最小值, null, 数字, 字符串, 对象/文档, 数组, 二进制数据, 对象ID, 布尔型, 日期型, 时间戳,
+    正则表达式, 最大值
+**** 不用skip对结果分页    
+     首先获取第一页数据, 然后将第一页中的某个数据作为作为下一页的查询条件
+* 索引
+  索引就是用来加速查询的.
+  db.people.ensureIndex({"username":1}) #对username建立索引, 对于同一个集合, 同样的索引只需要
+  创建一次, 1/-1表示索引创建的方向, 1:升序排列, -1:降序排列, 若索引只有一个键,
+  db.foo.ensureIndex({"a":1, "b":2}, {"name": "alphabet"}) #创建索引时命名
+  db.foo.ensureIndex({"username":1},{"background":true}) #可以使这个过程在后台完成
+  如果不包括background选项, 数据库会阻塞建立索引期间的所有请求
+  可以使用getLastError来检查索引是否成功创建了或失败的原因
+  则方向无关紧要, 若是有多个键, 就得考虑索引的方向问题
+  实践表明: 一定要创建查询中使用到的所有键的索引
+  只有使用索引前部的查询才能使用该索引
+  创建索引时应该考虑的问题:
+  1. 会做什么样的查询, 其中那些键需要索引
+  2. 每个键的索引方向是怎样的
+  3. 如何应对扩展, 有没有种不同的键排列可以使常用数据更多的保留在内存中
+  db.blog.ensuerIndex({"comments.date":1}) #为内嵌的文档建立索引
+** 为排序创建索引
+   一旦集合达到不能在内存中排序, Mongodb就会报错
+** 唯一索引
+   db.people.ensureIndex({"username":1}, {"unique":true})
+   db.people.ensureIndex({"username":1}, {"unique":true, "dropDups":true}J) #删除重复的值但保留
+   发现的第一个文档
+** explain/hint
+   帮组获取查询方面的有用信息
+   db.foo.find().explain() #返回查询使用的索引情况(如果有的话), 耗时以及文档数的统计信息
+   db.system.indexes.find({"ns":"test.foo", "name":"age_1"}) #查询test.foo集合的索引名为age_1的索引信息
+   db.c.find({"age":14, "username":/.*/}).hint({"username":1, "age":1}) #强制使用某个索引
+   mongodb的查询优化器非常智能, 初次做某个查询时, 查询优化器会同时尝试各种查询方案, 最先被完成的被
+   确定使用, 查询优化器定期重试其他方案, 以防因为添加新数据后, 之前的方案不再是最优的了
+   索引的元信息存储在每个数据库的system.indexes集合中, 这是一个保留集合, 不能对其插入或者删除,
+   操作只能通过ensureIndex或dropIndex
+   system.namespaces集合页含有索引的名字.查看该集合会发现每个集合至少有两个文档与之对应,
+   一个对应集合本身, 一个对应集合包含的索引. 如: {"name":"test.foo"}, {"name":"test.foo.$_id_"}
+   db.runCommand({"dropIndexes":"foo", "index":"alphabet"})
+   db.runCommand({"dropIndexes":"foo", "index":"*"}) #删除所有索引
+** 地理空间索引
+   db.map.ensureIndex({"gps":"2d"})
+   gps键的值必须是某种形式的一对值, 一个包含两个元素的数组或是包含两个键的内嵌文档
+   {"gps":[0, 100]}, {"gps":{"x":-30, "y":30}}都是有效的键值对
+   默认情况下, 地理空间索引值假设的范围是-180～180, 要是想用其他值, 可以指定选项来指定值
+   db.star.trek.ensureIndex({"light-years":"2d"}, {"min":-1000, "max": 1000})
+   db.map.find({"gps":{"$near":[40, -73]}}) #默认返回100个文档
+   db.map.find({"gps":{"$near":[40, -73]}}).limit(10) #返回10个文档
+   db.runCommand({geoNear: "map", near:[40, -73], num:10}), geoNear会返回每个文档到查询店的距离
+* 聚合
+** count
+   返回集合中的文档数量
+   db.foo.count()
+   db.foo.count({"x":1}) # 增加查询条件会使得count变慢
+** distinct
+   用来找出给定键的所有不同的值, 使用时必须指定集合和键
+   db.runCommand({"distinct":"people", "key":"age"})
+** group   
+   根据选定分组所依据的键, 而后mongodb就会将集合依据选定键值的不同分成若干组.然后可以通过聚合每一组
+   内的文档, 产生一个结果文档
+   db.runCommand({"group":{
+       "ns": "stocks",
+       "key": "day",
+       "initial": {"time": 0},
+       "$reduce": function(doc, prev) {
+           if (doc.time > prev.time) {
+               prev.price = doc.price;
+               prev.time = doc.time;
+           }
+       },
+       "condition": {"day":{"$gt":"2010/09/30", "$exists":true}}
+   }})
+   "inital": {"time":0} #每一组reduce函数调用的初始时间, 会作为初始文档传递给后续过程
+   "condition": xx #迭代的结束条件, $exists # 排除day不存在的数据
+*** 使用完成器
+    用于精简从数据库传到用户的数据, 可以在group中添加finalize键
+    db.runCommand({"group": {
+        "ns": "posts",
+        "key": {"tags":true},
+        "initial": {"tags": {}},
+        "$reduce": functioni(doc, prev) {
+            for (i in doc.tags) {
+                if (doc.tags[i] in prev.tags) {
+                    prev.tags[doc.tags[i]] ++;
+                } else {
+                    prev.tags[doc.tags[i]] = 1;
+                }
+            },
+        "finalize": function(prev) {
+            var mostPopular = 0;
+            for (i in prev.tags) {
+                if (prev.tags[i] > mostPopular) {
+                    prev.tag = i;
+                    mostPopular = prev.tags[i];
+                }
+            }
+            delete prev.tags;
+        }
+    }}})
+*** 将函数作为键使用    
+    db.posts.group({"ns":"posts",
+        "$keyf": function(x) { return x.category.toLowerCase(); },
+        "initalizer": ... })
+** MapReduce        
+   MapReduce很慢, 绝对不要在实时任务中, 要作为后台任务来运行MapReduce
+   每个传递给map函数的文档都要事先反序列化, 从BSON转换为javascript对象, 事先增加一层过滤
+   会极大的提高速度.
+
+   #map, reduce是自己定义好的函数
+   db.runCommand({"mapreduce":"analytics", "map":map, "reduce":reduce, "limit":100, "sort":{"date":-1}})
+
+   db.runCommand({"mapreduce":"webpages", "map":map, "reduce":reduce,
+       "scope": {now: new Date()}})
+   这样, 在map函数中就能计算1/(now - this.date)了
+   如果想看mapreduce的运行过程, 可以用"verbose":true
+* 进阶
+** 固定集合
+   固定集合很像一个环形队列
+   对固定集合插入速度极快, 按查找顺序输出的查询速度极快
+   db.createCollection("my_collection", {capped:true, size:10000, max:100})
+   #创建一个固定集合my_collection, 大小是10000字节,max指定文档数量的上限
+   db.runCommand({convertToCapped:"test", size:10000}) #将已有集合转换为固定集合
+** 自然排序
+   固定集合有种特殊的排序方式, 叫自然排序, 就是文档在磁盘上的顺序
+   {$natural:1}表示与默认顺序相同, 非固定集合不能保证文档按照特定顺序存储
+   {$natural:-1}与默认顺序相反
+** 尾部游标   
+   这类游标不会在没有结果后销毁, 一旦有新文档添加到集合里去就会被取回并输出.只能用于固定集合上
+   Mongoshell不支持尾部游标
+** GridFS
+   存储大二进制文件的机制.GridFS在同一个目录下放置大量的文件没有任何问题, GridFS不产生磁盘碎片
+   Mongodb分配数据文件空间时以2GB为一块
+*** 使用
+    mongofiles put file #存入文件
+    mongofiles get file #下载文件
+    mongofiles list #列出文件
+    mongofiles search file #用来按文件名查找GridFS中的文件
+    mongofiles delete file #删除文件
+*** 内部原理        
+    GridFS是一个建立在普通mongodb文档基础上的轻量级文件存储规范.
+    基本思想就是可以将大文件分成很多块, 每块作为一个单独的文档存储
+    除了存储文件本身的块, 还有一个单独的文档用来存储分块的信息和文件元数据
+    GridFS的块有个单独的集合, 默认时, 块将使用fs.chunks集合.
+    文件的元数据放在另一个集合中, 默认是fs.files
+*** 服务器端脚本
+    在服务器端可以通过db.eval函数来执行javascript脚本, 也可以将js脚本保存在数据库中
+    db.eval可以用来模拟多文档事务, db.veal锁住数据库, 然后执行js, 再解锁
+    db.eval("return 1;")
+    db.eval("function() { return 1;}")
+    只有在传递参数时, 才必须要封装为一个函数
+
+    v2.6.0返回x + y + z的值
+    db.eval("function(x, y, z) {return x + y + z;}", x, y, z)
+    db.eval("print('hello');") #会将数据打印至数据库日志中
+    调试db.eval的方法是, 将调试信息写进数据库日志中, 可以通过print函数来完成
+*** 存储javascript
+    每个mongodb的数据库中都有特殊的集合, 即system.js, 用来存放javascript变量.
+    这些变量可以在任何mongodb的javascript上下文中调用, 包括$where子句, db.eval调用, mapreduce作业
+    db.system.js.insert({"_id":"x", "value":1}) #存放变量
+    db.system.js.insert({"_id":"log", "value":
+    function(msg, level) {
+        var levels = ["DEBUG", "WARN", "ERROR", "FATAL"];
+        level = level ? level : 0;
+        var now = new Date();
+        print (now + " " + levels[level] + msg);
+    }});
+    db.eval("x=1; log('x is ' + x); x = 2; log('x is greater than 1', 1);")
+    使用存储的js缺点就是代码会与常规的源代码控制脱离, 会搅乱客户端发送来的js
+    当js代码很长又要频繁使用时, 可以使用存储的js
+    执行javascript代码, 需要考虑到类似于关系型数据库的注入攻击
+** 数据库引用
+   DBRef就像url, 唯一确定一个到文档的引用
+   DBRef有一些必选键, 例如: {"$ref":collection, "$id":id_value}
+   DBRef指向一个集合, 还有一个id_value用来在集合里根据"_id"确定唯一的文档. 如果想引用另一个数据库
+   中的文档, DBRef有个可选键"$db", DBRef中键的顺序不能改变, 第一个必须是"$ref", 接着是"$id",
+   然后是可选的$db.
+   
