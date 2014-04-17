@@ -52,3 +52,40 @@
        // i = 0, 1, 2
    }
    
+* 基本操作
+  大于4MB的文档是不能存入数据库的, 在shell中运行Object.bsonsize(doc)可以查看改文档的大小
+  MongoDB在插入数据时并不执行代码, 所以没有注入式攻击的可能
+  db.blog.remove(): 删除blog集合的所有文档, 但不会删除集合本身, 原有的索引也会保留, 删除数据后不能撤销
+  如果需要删除索引, 则可以使用db.drop_collection("collectionname")
+** 更新文档
+   更新是原子操作, 若是两个更新同时发生, 先到达服务器的先执行, 互相有冲突的更新可以火速传递, 不会互相干扰,
+   最后更新的会取得"胜利"
+   使用原子的更新修改器, 可以让更新极为高效, 例如:
+   db.analytics.update({"url":"www.example.com"}, {"$inc": {"pageview":1}})
+   使用修改器时, "_id"的值不能改变, 但是整个文档替换时是可以改变"_id"的, 其他键值包括唯一索引都是可以更改的
+*** $set修改器
+    $set指定一个键的值, 如果键不存在就创建,有则设置为指定的值, $set甚至可以修改键的数据类型, 也可以修改内嵌文档
+    $unset将键完全删除
+    示例:
+    db.blog.update({"title": "test"}, {"$set": {"createat": new Date()}});
+    db.blog.update({"title":"test"}, {"$unset":{"createat": new Date()}});
+*** $inc修改器
+    $inc是用来增加已有键的值, 或者在键不存在时创建一个键.
+    db.games.update({"game":"pinball"}, {"$inc":{"score":50}}) #给score加50(score存在)否则设置score=50
+    $inc只能用于数字(整数, 长整数,双精度浮点数), 不能用于字符串、数组或其他非数字类型的值
+*** 数组修改器
+    若指定的键存在, $push会向已有的数组末尾加入一个元素, 要是没有就会创建一个新的数组
+    db.blog.posts.update({"title":"A blog post"}, {$push: {"comment": {"name":"wnb", "content":"good"}}})
+    如果一个值不在数组里就将其加进去, 可以在查询文档中用$ne来实现, 例如:
+    db.papers.update({"authors": {"$ne":"Richie"}}, {$push:{"authors":"Richie"}});
+    也可以使用$addToSet完成同样的事情, 有些情况使用$ne是不行的, 更适合使用$addToSet
+    $addToSet在添加值时, 可以避免重复
+    $addToSet与$each组合起来可以添加多个不同的值,例如:
+    db.users.update({"name":"wnb"}, {$addToSet: {"email":{$each: ["wnb@gmail.com", "wnb@163.com"]}}});
+    从数组中删除元素的方法, 可以用$pop, 该修改器可以从数组的一端删除元素,{$pop: {key:1}}从数组末尾删除一个元素
+    {$pop: {key: -1}}从头部删除一个元素, $pull基于特定条件来删除元素,$pull,会将所有所有匹配的部分删掉,例如:
+    db.lists.update({}, {$pull:{"todo":"ok"}})
+*** 数组定位修改器
+    数组有多个值, 只想对其中的一部分进行操作, 有两种方法操作数组中的值, 通过位置或者定位操作符$,
+    数组都是以0开头的, 可以将下标直接作为键来选择
+    
