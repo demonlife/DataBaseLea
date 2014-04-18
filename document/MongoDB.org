@@ -492,4 +492,74 @@
     设置副本时,不能用localhost地址作为成员, 需要找到机器的主机名.
     为每一个服务器创建数据目录, 选择端口
     mkdir -p /dbs/node1 /dbs/node2
+    启动之前需要给副本集起个名字, 名字是为了易于与别的副本集区分
+    mongod --dbpath dbpath --port xx --replSet name/hostname:port 
+    #name为副本的名字, hostname为系统的主机名, port为其他副本的端口号
+    例如:
+    mongod --dbpath /tmp/dbs/node1 --port 10001 --replSet blort/demon:10002
+    mongod --dbpath /tmp/dbs/node2 --port 10002 --replSet blort/demon:10001
+    添加第三台时, 下面两种方式都可以:
+    mongod --dbpath /tmp/dbs/node3 --port 10003 --replSet blort/demon:10001
+    或者
+    mongod --dbpath /tmp/dbs/node3 --port 10003 --replSet blort/demon:10001, demon:10002
+    副本集具有自检测功能, 在其中指定单台服务器后, mongodb会自动搜索并连接其余的节点,
+    启动了几台服务器后, 日志会提示副本集没有进行初始化, 需要在shell中初始化副本集
+    在shell中连接其中任何一个服务器, 执行初始化命令, 初始化命令只能执行一次
+    use admin
+    db.runCommand({"replSetInitiate":{"_id":"blort", "members":[{
+        "_id":1, "host":"demon:10001"}, {"_id":2, "host":"demon:10002"}]}})
+    _id: 副本集的名字
+    members: 副本集中的服务器列表, 过后还能添加, 每个服务器至少有两个键, _id服务器唯一ID, host:服务器主机
+    配置会在服务器间传递
+*** 副本集中的节点
+    副本集中节点的分类:
+    standard: 常规节点, 存储一份完整的数据副本, 参与选举投票, 有可能成为活跃节点
+    passive: 存储完整的数据副本, 参与投票, 不能成为活跃节点
+    arbiter: 仲裁者只参与投票, 不接受复制的数据, 不能成为活跃节点
+    在节点配置中修改priority键, 配置成标准节点或是被动节点:
+    use admin
+    members.push({"_id": 3, "host":"demon:10003", "priority": 40}) #默认优先级为1, 可以是0-1000(含)
+    members.push({"_id":4, "host":"demon:10004","arbiterOnly":true}) #指定为仲裁者
+    备份节点会从活跃节点中抽取oplog, 并执行操作.
+    如果活跃节点坏了, 其余节点会选一个新的活跃节点, 选举过程可以由任何非活跃节点发起.新的活跃节点将是优先级
+    最高的节点, 优先级相同则数据较新的成为活跃节点
 
+    活跃节点使用心跳来跟踪集群中有多少节点对其可见.如果不够半数, 活跃节点会自动降为备份节点.
+    不论活跃节点何时变化, 新活跃节点的数据就被假定为最新的数据, 其他节点的操作都会回滚.
+*** 读扩展
+    设置主从复制, 连接从服务器处理请求, 唯一的技巧就是有个特殊的查询选项, 告诉从服务器是否可以处理请求,
+    默认是不处理, 该选项叫做slaveOkay, 所有mongodb驱动程序都提供了一种机制来设置它.
+** 工作原理
+   主节点负责处理客户端请求, 其他从节点负责映射主节点的数据.
+   从节点定期轮循主节点获取这些操作, 然后对自己的数据副本执行这些操作.
+   主节点的操作记录称为oplog(operation log), oplog存在一个特殊的数据库中, 叫做local.
+   oplog就在其中的oplog.$main集合里.
+   oplog中的每个文档都代表主节点上执行的一个操作. 文档包含的键如下:
+   ts: 操作的时间戳.由4字节的时间戳和4字节的递增计数器构成
+   op: 操作类型
+   o: 指定要做执行操作的文档
+   oplog只记录改变数据库状态的操作.
+*** 复制状态和本地数据库   
+    本地数据库就是local, 其内容不会被复制
+    主节点上的复制状态还包括从节点的列表, 从节点在连接主节点时会执行handshake命令进行握手
+    这个列表存放在slaves集合中
+    在主数据库中执行: db.slaves.find()
+    在从数据库中执行: db.sources.find()
+*** 阻塞复制    
+    db.runcommand({getLastError:1, w: N})
+    如果没有N,或者小于2, 命令会立刻返回, 如果N等于2, 主节点要等到至少一个从节点复制了上个
+    操作才会响应命令.
+    主节点使用local.slaves中存放的"syncedTo"信息跟踪从节点的更新情况.
+** 诊断
+   连接到主节点, db.printReplicationiInfo();
+   连接到从节点, db.printSlaveReplicationInfo();
+*** 复制的认证
+    本地数据库的用户能够读写整个服务器
+    从节点在连接主节点时, 会用存储在local.system.usres中的用户进行认证.
+    最先尝试repl用户, 若没有, 则用local.system.users中的第一个可用用户
+    use local
+    db.addUser("repl", password)
+* 分片    
+  在没有分片时, 客户端连接mongod进程, 分片时客户端会连接mongos进程
+** 片键
+   设置分片时, 需要从集合里选一个键, 用该键的值作为数据拆分的依据.该键称为片键
