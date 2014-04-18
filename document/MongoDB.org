@@ -366,4 +366,130 @@
    DBRef指向一个集合, 还有一个id_value用来在集合里根据"_id"确定唯一的文档. 如果想引用另一个数据库
    中的文档, DBRef有个可选键"$db", DBRef中键的顺序不能改变, 第一个必须是"$ref", 接着是"$id",
    然后是可选的$db.
+   例子:
+   user表的数据如下:
+   db.user.insert({"_id":"mike", "display_name":"Mike D"});
+   db.user.insert({"_id":"kristina", "display_name":"Kristina C"});
+   notes表的数据如下:
+   db.notes.insert({"_id":5, "author":"mike", "text":"Mongodb is fun!"})
+   db.notes.insert({"_id":20, "author":"kristina", "text":"... adn dbrefs are easy, too", "references":[{"$ref":"users", "$id":"mike"}, {"$ref":"notes", "$id": 5}]})
+   查询操作:
+   var note = db.notes.findOne({"_id": 20})
+   note.references.forEach(function(ref) {
+       printjson(db[ref.$ref].findOne({"_id":ref.$id}));
+   });
+* 管理
+** 启动
+   可以使用mongod --help查看帮助文档
+   --dbpath: 指定数据目录, 默认是/data/db, windows下是C:\data\db, 每个mongod进程都需要独立的数据库目录
+   mongod启动时, 会在数据目录中创建ongod.lock文件, 该文件用于防止其他mongod进程使用改数据目录.如果使用
+   同一个数据目录启动另一个mongodb服务器, 则会报错: unable to acquire lock for lockfilepath: /data/db/mongod.lock
+   --port: 指定服务器监听的端口号, 默认端口是27017, 如果运行多个mongod进程, 则要给每个指定不同的端口号
+   --fork: 以守护进程的方式运行mongodb
+   --logpath: 指定日志输出路径, 而不是输出到命令行, 如果想保留原来的日志, 还需使用--logappend
+   --config: 加载指定配置文件, 加载命令行未指定的各种选项
+   例子:
+   mongod --port 5586 --fork --logpath mongodb.log
+   第一次运行mongod程序时, 最好看看日志信息.在每次安装, 升级, 宕机后应该再一次确认日志信息
+   指定配置文件可以使用-f或者--config选项, 例子:
+   #start mongodb as a daemon on prot 5586, 注释
+   port = 5586
+   fork = true # daemonize it
+   logpath = mongodb.log
+** 关闭mongodb
+   kill -2 pid 或者 kill pid
+   千万不要向运行中得mongodb发送SIGKILL,kill -9, 这会导致数据库直接关闭, 会让数据库文件损坏.
+   如果真的损坏了, 一定要在启动备份前修复数据库.
+   另一种稳妥的方式是在mongognshell中使用shutdown命令, 需要在admin数据库下使用,
+   db.shutdownServer()
+   获取运行中得Mongodb服务器统计信息,最基本工具就是serverStatus命令
+   部分信息解释:
+   globalLock: 全局写入锁占用了服务器多少时间以微妙记, mem:包含服务器内存映射了多少数据, 服务器进程的
+   虚拟内存和常驻内存的占用情况单位MB, indexCounters: B树在磁盘检索和内存检索的次数, 如果该比值开始上升
+   就应该考虑添加内存了. backgroundFlushing: 后台做了多少次fsync以及用了多少时间. opcounters: 包含了
+   每种主要操作的次数, assert: 统计了断言的次数.
+   serverStatus结果中得所有计数都是在服务器启动时开始计算的, 如果过大就会复位, 所有计数器都复位,
+   assert中得rollovers值会增加.
+   mongostat: 输出一些serverStatus提供的重要信息.
+** 安全和认证
+   mongodb支持对单个连接的认证, 即便这个认证的权限模式很简陋.
+   如果开启了安全性检查, 则只有数据库认证用户才能执行读写操作.在认证的上文中, mongodb会将普通数据作为admin
+   数据库处理, admin数据库中得用户被视为超级用户. 在认证之后, 管理员可以读写所有的数据库, 执行特定的管理
+   命令.
+   例子:
+   use admin
+   db.addUser("root", "toor")
+   use test
+   db.addUser("test_user", "test")
+   db.addUser("read_only", "test", true)
+   添加了管理员账号, 在test数据库下添加了两个普通账号,创建只读用户只要将addUser的第3个参数设为true就可以了.
+   调用addUser必须有相应数据库的写权限.
+   addUser不仅能添加用户, 还能修改用户口令或者设置只读状态.
+   mongod --auth --dbpath ... #开启安全检查
+   show dbs #列举所有数据库
+*** 认证的工作原理
+    数据库的用户账号以文档的形式存储在system.users集合里,
+    db.system.users.remove({"user": "test_user"}) #删除用户
+    即便启用了认证, mongodb传输协议也是不加密的, 如果需要加密可以用ssh隧道或类似的技术做客户端与服务器间的加密
+    mongod --bindip localhost #只能从本机应用服务器访问.
+    --nohttpinter-face : 关闭http管理接口
+    --noscripting: 完全禁止服务器端javascript的执行.
+** 备份
+   要想备份mongodb, 只要简单创建数据目录中得所有文件的副本就可以了, 但是采用这种方式备份, 需要mongodb停机
+*** mongodump/mongorestore
+    mongodump将所有查到的文档写入磁盘,即便正在处理其他请求或是执行写入也没有问题.
+    mongodump使用普通的查询机制, 所以产生的备份不一定是服务器数据的实时快照.并且备份时的查询会对其他
+    客户端的性能产生不利影响.
+    mongodump --help #查看帮助
+    mongorestore获取mongodump的输出结果, 并将备份的数据插入到运行中的mongodb中.
+    mongodump -d test -o backup # 备份test数据库
+    mongorestore -d foo --drop backup/test
+    --drop: 代表恢复前删除集合, 否则数据就会与现有集合数据合并, 可能会覆盖一些文档.
+*** fsync和锁
+    fsync命令能够在mongodb运行时复制数据目录还不会损坏数据.
+    fsync命令会强制服务器将所有缓冲区写入磁盘, 还可以选择上锁阻止对数据库的进一步写入, 直到释放为止.
+    use admin
+    db.runCommand({"fsync":1, "lock": 1});
+    备份好了, 就需要解锁:
+    db.$cmd.sys.unlock.findOne();
+    db.currentOp(); #运行currentOp是为了确保已经解锁.
+    在从服务器上的备份是mongodb推荐的备份方式.
+** 修复数据
+   最简单的方式是加上--repair; mongodb --repair.修复数据库的实际过程是: 将所有的文档导出然后导入,
+   忽略那些无效的数据. 完成后, 会重新建立索引.
+   修复运行中得服务器上的数据库:
+   use test
+   db.repairDatabase()
    
+* 复制
+  强烈建议在生产环境中使用mongodb的复制功能
+** 主从复制
+   1. 首先给主节点建立数据目录, 并绑定端口
+      mkdir -p /dbs/master
+      mongod --dbpath /dbs/master --port xx --master
+   2. 设置从节点, 要选择不同端口和数据目录
+      mkdir -p /dbs/slave
+      mongod --dbpath /dbs/slave --port xx --slave --source localhost:xx #在本地建立主从
+   不超过12个从节点的集群就可以运转良好
+*** 主从复制的选项
+    --only: 在从节点上指定只复制某个特定数据库, 默认复制所有数据库
+    --slavedelay: 用在从节点上, 当应用主节点的操作时增加延时,单位是秒, 这样就能轻松设置延时从节点了.
+    --fastsync: 以主节点的数据快照为基础启动从节点
+    --autoresync: 自动同步
+    --oplogSize: 主节点oplogSize的大小, MB
+*** 添加及删除源
+    启动从节点时, 可以不添加源, 可以随后向sources集合添加主节点信息:
+    use local
+    db.sources.insert({"host":"localhost:27107"});
+    改变从节点的配置:
+    db.sources.insert({"host":"xxx"})
+    db.sources.remove({"host":"xxx"})
+    如果切换的两个主节点有相同的集合, mongodb会尝试合并, 但不能保证正确合并.
+** 副本集
+   自动故障恢复功能的主从集群. 主从集群和副本集群最明显的区别是副本集没有固定的"主节点", 整个集群会选出
+   一个"主节点", 当其不能工作时, 则变更到其他节点.副本集总会有一个活跃节点和一个多个备份节点.
+*** 初始化副本
+    设置副本时,不能用localhost地址作为成员, 需要找到机器的主机名.
+    为每一个服务器创建数据目录, 选择端口
+    mkdir -p /dbs/node1 /dbs/node2
+
