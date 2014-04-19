@@ -559,7 +559,12 @@
     最先尝试repl用户, 若没有, 则用local.system.users中的第一个可用用户
     use local
     db.addUser("repl", password)
-* 分片    
+* 分片
   在没有分片时, 客户端连接mongod进程, 分片时客户端会连接mongos进程
 ** 片键
    设置分片时, 需要从集合里选一个键, 用该键的值作为数据拆分的依据.该键称为片键
+* 补充
+  Mongodb的版本号, 偶数的版本号是稳定版, 奇数的是开发版, 1.6.x就是稳定版
+  当分支版本进入x.y.5的时候, 就非常接近可用于生产的水平了.
+  mongo localhost:27017/admin 连接admin数据库, 而不是默认的test数据库
+  mongo --nodb # 不连接数据库, 只是想试试javascript
