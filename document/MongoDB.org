@@ -389,13 +389,14 @@
    --logpath: 指定日志输出路径, 而不是输出到命令行, 如果想保留原来的日志, 还需使用--logappend
    --config: 加载指定配置文件, 加载命令行未指定的各种选项
    例子:
-   mongod --port 5586 --fork --logpath mongodb.log
+   mongod --port 5586 --fork --logpath mongodb.log --dbpath xxpath
    第一次运行mongod程序时, 最好看看日志信息.在每次安装, 升级, 宕机后应该再一次确认日志信息
    指定配置文件可以使用-f或者--config选项, 例子:
    #start mongodb as a daemon on prot 5586, 注释
    port = 5586
    fork = true # daemonize it
    logpath = mongodb.log
+   如果需要使用web rest接口，需要加上参数--rest
 ** 关闭mongodb
    kill -2 pid 或者 kill pid
    千万不要向运行中得mongodb发送SIGKILL,kill -9, 这会导致数据库直接关闭, 会让数据库文件损坏.
