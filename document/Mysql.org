@@ -1,0 +1,9 @@
+* 使用lnmp安装的mysql
+** mysql 配置文件
+   mysql的错误日志文件默认是在/usr/local/mysql/var/domain.err
+** mysql 添加用户
+   grant all privileges on *.* to 'username'@'*' identified by 'password'
+   grant all privileges on *.* to 'username'@'localhost' identified by 'password'
+   grant all privileges on 'databasename.tablename' to 'uname'@'*' identified by 'pwd'
+
+   drop user username@localhost;
