@@ -569,3 +569,6 @@
   当分支版本进入x.y.5的时候, 就非常接近可用于生产的水平了.
   mongo localhost:27017/admin 连接admin数据库, 而不是默认的test数据库
   mongo --nodb # 不连接数据库, 只是想试试javascript
+* Mongo 工具
+** mongo shell 结果优化显示
+   mongo hacker：https://github.com/TylerBrock/mongo-hacker
