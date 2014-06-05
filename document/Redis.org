@@ -4,4 +4,17 @@
 * Redis 的术语
 ** scan
 ** monitor
+* Redis 使用lua
+  http://www.oschina.net/translate/intro-to-lua-for-redis-programmers
+** 使用方法
+   redis-cli eval "$(cat xx.lua)" keys_number key1 key2 argv1 argv2
+   keys_number：是需要传递的键的数目，不传则为0
+   在调用lua脚步时，会访问两个lua表，KEYS和ARGV，例如如下脚本
+   <test.lua>：
+   local link_id = redis.call("INCR", KEYS[1])
+   redis.call("HSET", KEYS[2], link_id, ARGV[1])
+   return link_id
+   调用方法如下：
+   redis-cli eval "$(cat test.lua)" 2 links:counter links:urls http://ww.baidu.com
    
+  
