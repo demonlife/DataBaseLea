@@ -396,7 +396,7 @@
    port = 5586
    fork = true # daemonize it
    logpath = mongodb.log
-   如果需要使用web rest接口，需要加上参数--rest
+   如果需要使用web rest接口，需要加上参数--rest, 2.6.1版本中使用--httpinterface
 ** 关闭mongodb
    kill -2 pid 或者 kill pid
    千万不要向运行中得mongodb发送SIGKILL,kill -9, 这会导致数据库直接关闭, 会让数据库文件损坏.
@@ -572,3 +572,6 @@
 * Mongo 工具
 ** mongo shell 结果优化显示
    mongo hacker：https://github.com/TylerBrock/mongo-hacker
+** rockmongo
+   类似于phpmyadmin
+   
