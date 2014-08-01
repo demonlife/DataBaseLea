@@ -1,0 +1,37 @@
+* Memcached 使用方法
+** 安装
+   memcached会用到libevent
+   libevent下载地址：http://libevent.org/
+   ./configure && make && make install
+   然后下载memcached， http://memcached.org/
+   ./configure --prefix=/path --with-libevent=/libeventpath
+** 启动
+   memcached -h #查看帮助信息
+   LD_DEBUG=libs memcached -v # 查看memcached启动时库的加载路径
+   如果启动时， 找不到libevent，可以建立一个软链接
+   ln -s 源文件 目标文件(软链接生成的)
+   memcached -d -m 128 -u root -p 11211
+   p: 使用的tcp端口, 默认为11211
+   m: 最大内存大小， 默认为64M
+   vv: 用very vrebose模式启动， 调试信息和错误输出到控制台
+   d: 作为daemon运行
+   u: 运行memcached的账户
+** 查看memcached的内部状态
+   telnet ip port
+   stats # 查看memcached的状态
+** python-memcaced
+   下载https://pypi.python.org/pypi/python-memcached/
+   python setup.py install 或者 pip install python-memcached
+*** python-memcached API总结
+    set(key, val, time=0, min_compress_len=0)
+    set_multi(mapping, time=0, key_prefix='', min_compress_len=0)
+    key_prefix是key的前缀, 完整的键名是key_prefix+key使用方法如下：
+    mc.set_multi({'k1':1, 'k2':2}, key_prefix="prefix_")
+    mc.get_multi(['k1', 'k2', 'nonexist'], key_prefix="prefix_")
+    add(key, val, time=0, min_compress_len=0)
+    replace(key, value, time=0, min_compress_len=0)
+    get(key)
+    get_multi(keys, key_prefix='')
+    delete(key, time=0), time的单位为秒， 用于确保在特定时间内的set和update操作会失败
+    incr(key, delta=1), 自增变量加上delta，默认加1，
+    decr(key, delta=1), 自减变量减去delta，默认减1
