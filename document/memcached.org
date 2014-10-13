@@ -19,6 +19,9 @@
 ** 查看memcached的内部状态
    telnet ip port
    stats # 查看memcached的状态
+** memcached 常用命令
+   http://www.blogjava.net/hao446tian/archive/2012/04/11/373773.html
+   
 ** python-memcaced
    下载https://pypi.python.org/pypi/python-memcached/
    python setup.py install 或者 pip install python-memcached
